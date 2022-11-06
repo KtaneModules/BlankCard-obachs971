@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
@@ -269,7 +270,7 @@ public class blankCard : MonoBehaviour {
 		connectedLines.Clear();
 	}
 #pragma warning disable 414
-	private readonly string TwitchHelpMessage = @"!{0} draw 0 1 3 [Draws lines starting at the first specified dot and then dragging to all other specified dots in the order given. Dots are 0-3 in reading order.] | !{0} clear [Presses the clear button.]";
+	private readonly string TwitchHelpMessage = @"!{0} draw 1 2 4 [Draws lines starting at the first specified dot and then dragging to all other specified dots in the order given. Dots are 1-4 in reading order.] | !{0} clear [Presses the clear button.]";
 #pragma warning restore 414
 	private bool TwitchPlaysActive;
 	private bool DrawingTP;
@@ -298,11 +299,16 @@ public class blankCard : MonoBehaviour {
 						yield return "sendtochaterror!f The specified dot '" + parameters[i] + "' is invalid!";
 						yield break;
                     }
-					if (temp < 0 || temp > 3)
+					if (temp < 1 || temp > 4)
                     {
 						yield return "sendtochaterror The specified dot '" + parameters[i] + "' is invalid!";
 						yield break;
 					}
+				}
+				if (points[int.Parse(parameters[1]) - 1].OnInteract == null)
+                {
+					yield return "sendtochaterror Lines can no longer be drawn from the dot '" + parameters[1] + "'!";
+					yield break;
 				}
 				if (submitResult != -1)
                 {
@@ -315,16 +321,19 @@ public class blankCard : MonoBehaviour {
 				{
 					if (i == 1)
                     {
-						DrawTPPos = Camera.main.WorldToScreenPoint(points[int.Parse(parameters[i])].transform.position);
-						points[int.Parse(parameters[i])].OnInteract();
+						DrawTPPos = Camera.main.WorldToScreenPoint(points[int.Parse(parameters[1]) - 1].transform.position);
+						points[int.Parse(parameters[1]) - 1].OnInteract();
 					}
 					Vector3 origPos = DrawTPPos;
 					float t = 0f;
-					while (DrawTPPos != Camera.main.WorldToScreenPoint(points[int.Parse(parameters[i + 1])].transform.position))
+					int prevConCt = connectedLines.Count;
+					while (prevConCt == connectedLines.Count)
                     {
 						yield return null;
-						DrawTPPos = Vector3.Lerp(origPos, Camera.main.WorldToScreenPoint(points[int.Parse(parameters[i + 1])].transform.position), t);
+						DrawTPPos = Vector3.Lerp(origPos, Camera.main.WorldToScreenPoint(points[int.Parse(parameters[i + 1]) - 1].transform.position), t);
 						t += Time.deltaTime * 2f;
+						if (t > 2f)
+							break;
                     }
 				}
 				DrawingTP = false;
@@ -352,313 +361,81 @@ public class blankCard : MonoBehaviour {
 				yield return new WaitForSeconds(.1f);
             }
 			if (card[0] == 12 && card[1] == 0)
-				yield return ProcessTwitchCommand("draw 0 1 3 2 0");
+				yield return ProcessTwitchCommand("draw 1 2 4 3 1");
 			else if (card[0] == 12 && card[1] == 1)
-				yield return ProcessTwitchCommand("draw 0 2 3 1 0");
+				yield return ProcessTwitchCommand("draw 1 3 4 2 1");
 			else if (card[0] == 12 && card[1] == 2)
-				yield return ProcessTwitchCommand("draw 1 3 2 0 1");
+				yield return ProcessTwitchCommand("draw 2 4 3 1 2");
 			else if (card[0] == 12 && card[1] == 3)
-				yield return ProcessTwitchCommand("draw 2 3 1 0 2");
+				yield return ProcessTwitchCommand("draw 3 4 2 1 3");
             else
             {
-				if (card[1] == 0)
+				List<int> usedIndexes = new List<int>();
+				for (int i = 0; i < 4; i++)
                 {
-					yield return ProcessTwitchCommand("draw 0 1");
-					yield return new WaitForSeconds(.1f);
-					if (card[0] >= 0 && card[0] <= 3)
+					int drawIndex = -1;
+					bool reverse = false;
+					if (i == 0)
                     {
-						yield return ProcessTwitchCommand("draw 1 3");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 2 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 2)
-								yield return ProcessTwitchCommand("draw 0 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 0");
-						}
-						else
+						drawIndex = new int[] { 0, 3, 1, 2 }[card[1]];
+						usedIndexes.Add(drawIndex);
+					}
+					else if (i == 1)
+                    {
+						drawIndex = card[0] / 4 + 1 + usedIndexes[usedIndexes.Count - 1];
+						drawIndex %= 4;
+						usedIndexes.Add(drawIndex);
+					}
+					else if (i == 2)
+					{
+						for (int j = 0; j < ((card[0] % 2 == 0) ? 1 : 2); j++)
                         {
-							yield return ProcessTwitchCommand("draw 0 2");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 2)
-								yield return ProcessTwitchCommand("draw 3 2");
+							if (j == 0)
+								drawIndex = (usedIndexes[usedIndexes.Count - 1] + 1) % 4;
 							else
-								yield return ProcessTwitchCommand("draw 2 3");
+								drawIndex = (drawIndex + 1) % 4;
+							while (usedIndexes.Contains(drawIndex))
+							{
+								drawIndex++;
+								if (drawIndex > 3)
+									drawIndex = 0;
+							}
 						}
+						usedIndexes.Add(drawIndex);
 					}
-					else if (card[0] >= 4 && card[0] <= 7)
-					{
-						yield return ProcessTwitchCommand("draw 2 3");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 0 2");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 6)
-								yield return ProcessTwitchCommand("draw 1 3");
-							else
-								yield return ProcessTwitchCommand("draw 3 1");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 1 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 6)
-								yield return ProcessTwitchCommand("draw 0 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 0");
-						}
-					}
-					else
-					{
-						yield return ProcessTwitchCommand("draw 0 2");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 1 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 10)
-								yield return ProcessTwitchCommand("draw 3 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 3");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 2 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 10)
-								yield return ProcessTwitchCommand("draw 1 3");
-							else
-								yield return ProcessTwitchCommand("draw 3 1");
-						}
-					}
-				}
-				else if (card[1] == 1)
-                {
-					yield return ProcessTwitchCommand("draw 0 2");
+                    else
+                    {
+						for (int j = 0; j < 4; j++)
+                        {
+							if (!usedIndexes.Contains(j))
+							{
+								drawIndex = j;
+								break;
+							}
+                        }
+						if ((card[0] % 4) < 2) reverse = true;
+                    }
+					yield return ProcessTwitchCommand("draw " + GetTPLineString(drawIndex, reverse));
 					yield return new WaitForSeconds(.1f);
-					if (card[0] >= 0 && card[0] <= 3)
-					{
-						yield return ProcessTwitchCommand("draw 0 1");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 1 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 2)
-								yield return ProcessTwitchCommand("draw 3 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 3");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 2 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 2)
-								yield return ProcessTwitchCommand("draw 1 3");
-							else
-								yield return ProcessTwitchCommand("draw 3 1");
-						}
-					}
-					else if (card[0] >= 4 && card[0] <= 7)
-					{
-						yield return ProcessTwitchCommand("draw 1 3");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 2 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 6)
-								yield return ProcessTwitchCommand("draw 1 0");
-							else
-								yield return ProcessTwitchCommand("draw 0 1");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 0 1");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 6)
-								yield return ProcessTwitchCommand("draw 3 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 3");
-						}
-					}
-					else
-					{
-						yield return ProcessTwitchCommand("draw 2 3");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 0 1");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 10)
-								yield return ProcessTwitchCommand("draw 1 3");
-							else
-								yield return ProcessTwitchCommand("draw 3 1");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 1 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 10)
-								yield return ProcessTwitchCommand("draw 1 0");
-							else
-								yield return ProcessTwitchCommand("draw 0 1");
-						}
-					}
-				}
-				else if (card[1] == 2)
-                {
-					yield return ProcessTwitchCommand("draw 1 3");
-					yield return new WaitForSeconds(.1f);
-					if (card[0] >= 0 && card[0] <= 3)
-					{
-						yield return ProcessTwitchCommand("draw 2 3");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 0 2");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 2)
-								yield return ProcessTwitchCommand("draw 1 0");
-							else
-								yield return ProcessTwitchCommand("draw 0 1");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 0 1");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 2)
-								yield return ProcessTwitchCommand("draw 0 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 0");
-						}
-					}
-					else if (card[0] >= 4 && card[0] <= 7)
-					{
-						yield return ProcessTwitchCommand("draw 0 2");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 0 1");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 6)
-								yield return ProcessTwitchCommand("draw 3 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 3");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 2 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 6)
-								yield return ProcessTwitchCommand("draw 1 0");
-							else
-								yield return ProcessTwitchCommand("draw 0 1");
-						}
-					}
-					else
-					{
-						yield return ProcessTwitchCommand("draw 0 1");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 2 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 10)
-								yield return ProcessTwitchCommand("draw 0 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 0");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 0 2");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 10)
-								yield return ProcessTwitchCommand("draw 3 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 3");
-						}
-					}
-				}
-                else
-                {
-					yield return ProcessTwitchCommand("draw 2 3");
-					yield return new WaitForSeconds(.1f);
-					if (card[0] >= 0 && card[0] <= 3)
-					{
-						yield return ProcessTwitchCommand("draw 0 2");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 0 1");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 2)
-								yield return ProcessTwitchCommand("draw 1 3");
-							else
-								yield return ProcessTwitchCommand("draw 3 1");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 1 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 2)
-								yield return ProcessTwitchCommand("draw 1 0");
-							else
-								yield return ProcessTwitchCommand("draw 0 1");
-						}
-					}
-					else if (card[0] >= 4 && card[0] <= 7)
-					{
-						yield return ProcessTwitchCommand("draw 0 1");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 1 3");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 6)
-								yield return ProcessTwitchCommand("draw 0 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 0");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 0 2");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 6)
-								yield return ProcessTwitchCommand("draw 1 3");
-							else
-								yield return ProcessTwitchCommand("draw 3 1");
-						}
-					}
-					else
-					{
-						yield return ProcessTwitchCommand("draw 1 3");
-						yield return new WaitForSeconds(.1f);
-						if (card[0] % 2 == 0)
-						{
-							yield return ProcessTwitchCommand("draw 0 2");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 10)
-								yield return ProcessTwitchCommand("draw 1 0");
-							else
-								yield return ProcessTwitchCommand("draw 0 1");
-						}
-						else
-						{
-							yield return ProcessTwitchCommand("draw 0 1");
-							yield return new WaitForSeconds(.1f);
-							if (card[0] < 10)
-								yield return ProcessTwitchCommand("draw 0 2");
-							else
-								yield return ProcessTwitchCommand("draw 2 0");
-						}
-					}
 				}
 			}
 		}
 		while (submitResult != -1) yield return true;
     }
+	string GetTPLineString(int lineIndex, bool reverse)
+    {
+		string result;
+		if (lineIndex == 0)
+			result = "1 2";
+		else if (lineIndex == 1)
+			result = "4 2";
+		else if (lineIndex == 2)
+			result = "3 4";
+		else
+			result = "3 1";
+		if (reverse)
+			return result.Reverse().Join("");
+		else
+			return result;
+	}
 }
